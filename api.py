@@ -1,48 +1,11 @@
 from flask import Flask, request, jsonify, render_template_string
 import time
+import requests
 
 app = Flask(__name__)
 
-# Données simulées pour plusieurs provinces
-DATA = {
-    "Antsiranana": [
-        {
-            "num_inscription": "2379272",
-            "nom_prenoms": "ANDRIANINA Rakotonantoandro Innocenti",
-            "serie": "A2",
-            "centre": "ANDAPA",
-            "ecole": "LP AGAPE ANDAPA",
-            "mention": "PASSABLE",
-            "admis": "Admis"
-        },
-        {
-            "num_inscription": "5182092",
-            "nom_prenoms": "ATREHANTSOA Ndriana Rakotovao",
-            "serie": "OSE",
-            "centre": "NOSY-BE",
-            "ecole": "LP ADVENTISTE NOSY-BE",
-            "mention": "PASSABLE",
-            "admis": "Admis"
-        },
-        {
-            "num_inscription": "7700222",
-            "nom_prenoms": "RAKOTO Asandrajato Ainay",
-            "serie": "CCBTP",
-            "centre": "ANTALAHA",
-            "ecole": "LYCEE TECHNIQUE ANTALAHA",
-            "mention": "PASSABLE",
-            "admis": "Admis"
-        },
-        {
-            "num_inscription": "4303188",
-            "nom_prenoms": "RAKOTO Jean",
-            "serie": "A2",
-            "centre": "ANDAPA",
-            "ecole": "LYCEE MIXTE ANDAPA",
-            "mention": "PASSABLE",
-            "admis": "Admis"
-        }
-    ],
+# Données simulées pour les autres provinces (en attendant d'avoir leurs API réelles)
+STATIC_DATA = {
     "Antananarivo": [
         {
             "num_inscription": "1029384",
@@ -51,15 +14,6 @@ DATA = {
             "centre": "ANTANANARIVO",
             "ecole": "LYCEE J.J. RABEARIVELO",
             "mention": "BIEN",
-            "admis": "Admis"
-        },
-        {
-            "num_inscription": "1029385",
-            "nom_prenoms": "RANDRIANASOLO Marie",
-            "serie": "A2",
-            "centre": "ANTANANARIVO",
-            "ecole": "LYCEE GALLIENI",
-            "mention": "PASSABLE",
             "admis": "Admis"
         }
     ],
@@ -73,11 +27,38 @@ DATA = {
             "mention": "TRES BIEN",
             "admis": "Admis"
         }
-    ],
-    "Mahajanga": [],
-    "Toamasina": [],
-    "Toliara": []
+    ]
 }
+
+def search_antsiranana_real(query):
+    """Effectue une recherche réelle sur l'API d'Antsiranana"""
+    url = "https://univants.mg/bacc/api/search.php"
+    params = {
+        "action": "search",
+        "nom_prenom": query
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("success") and "data" in data:
+                # Mapper les champs pour correspondre à notre format
+                return [
+                    {
+                        "num_inscription": item.get("numero_candidat"),
+                        "nom_prenoms": item.get("nom_prenom"),
+                        "serie": item.get("option"),
+                        "centre": item.get("centre"),
+                        "ecole": item.get("etablissement"),
+                        "mention": item.get("mention"),
+                        "admis": "Admis" if item.get("mention") else "Inconnu",
+                        "province": "Antsiranana"
+                    }
+                    for item in data["data"]
+                ]
+    except Exception as e:
+        print(f"Erreur lors du scraping Antsiranana: {e}")
+    return []
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -85,7 +66,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Résultats BACC Madagascar</title>
+    <title>API Résultats BACC Madagascar (LIVE)</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
         .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -99,50 +80,35 @@ HTML_TEMPLATE = """
         a:hover { text-decoration: underline; }
         .footer { margin-top: 50px; font-size: 0.9em; color: #7f8c8d; text-align: center; }
         .tag { display: inline-block; background: #3498db; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; margin-right: 5px; }
+        .live-badge { background: #27ae60; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; vertical-align: middle; margin-left: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎓 API Résultats BACC Madagascar</h1>
-        <p>Bienvenue sur l'interface de documentation de l'API des résultats du Baccalauréat à Madagascar.</p>
+        <h1>🎓 API Résultats BACC Madagascar <span class="live-badge">LIVE</span></h1>
+        <p>Cette API est désormais <strong>dynamique</strong>. Elle interroge en temps réel les serveurs officiels pour la province d'Antsiranana.</p>
         
         <h2>🚀 Utilisation de l'API</h2>
-        <p>L'API permet de rechercher des candidats par nom et par province.</p>
-        
         <div class="endpoint">
             <code>GET /recherche?bacc={NOM}&province={PROVINCE}</code>
         </div>
 
-        <h3>Paramètres :</h3>
-        <ul>
-            <li><code>bacc</code> (obligatoire) : Le nom ou une partie du nom du candidat.</li>
-            <li><code>province</code> (optionnel) : La province de l'examen (ex: Antsiranana, Antananarivo, Fianarantsoa).</li>
-        </ul>
-
-        <h2>🔗 Exemples de liens cliquables</h2>
+        <h2>🔗 Exemples de liens cliquables (Temps Réel)</h2>
         <div class="example">
-            <p><strong>Recherche simple (RAKOTO) :</strong><br>
-            <a href="/recherche?bacc=RAKOTO" target="_blank">/recherche?bacc=RAKOTO</a></p>
+            <p><strong>Recherche "Fanantenana" (Données réelles) :</strong><br>
+            <a href="/recherche?bacc=Fanantenana&province=Antsiranana" target="_blank">/recherche?bacc=Fanantenana&province=Antsiranana</a></p>
         </div>
 
         <div class="example">
-            <p><strong>Recherche par province (RAKOTO à Antsiranana) :</strong><br>
+            <p><strong>Recherche "RAKOTO" (Données réelles) :</strong><br>
             <a href="/recherche?bacc=RAKOTO&province=Antsiranana" target="_blank">/recherche?bacc=RAKOTO&province=Antsiranana</a></p>
-        </div>
-
-        <div class="example">
-            <p><strong>Recherche spécifique (Bruno à Fianarantsoa) :</strong><br>
-            <a href="/recherche?bacc=Bruno&province=Fianarantsoa" target="_blank">/recherche?bacc=Bruno&province=Fianarantsoa</a></p>
         </div>
 
         <h2>📍 Provinces supportées</h2>
         <p>
-            <span class="tag">Antananarivo</span>
-            <span class="tag">Antsiranana</span>
-            <span class="tag">Fianarantsoa</span>
-            <span class="tag">Mahajanga</span>
-            <span class="tag">Toamasina</span>
-            <span class="tag">Toliara</span>
+            <span class="tag">Antsiranana (LIVE)</span>
+            <span class="tag">Antananarivo (Démo)</span>
+            <span class="tag">Fianarantsoa (Démo)</span>
         </p>
     </div>
     <div class="footer">
@@ -166,29 +132,31 @@ def recherche():
     
     results = []
     
-    # Si une province est spécifiée
-    if province_query:
-        if province_query in DATA:
-            province_data = DATA[province_query]
-            results = [r for r in province_data if bacc_query.lower() in r['nom_prenoms'].lower()]
-        else:
-            return jsonify({"error": f"Province '{province_query}' non reconnue. Provinces valides: {', '.join(DATA.keys())}"}), 404
-    else:
-        # Recherche dans toutes les provinces
-        for province, candidates in DATA.items():
+    # Logique de recherche
+    if province_query == "Antsiranana":
+        results = search_antsiranana_real(bacc_query)
+    elif province_query in STATIC_DATA:
+        results = [r for r in STATIC_DATA[province_query] if bacc_query.lower() in r['nom_prenoms'].lower()]
+        for r in results: r['province'] = province_query
+    elif not province_query:
+        # Recherche dans Antsiranana (LIVE) + Autres (STATIC)
+        results.extend(search_antsiranana_real(bacc_query))
+        for prov, candidates in STATIC_DATA.items():
             for c in candidates:
                 if bacc_query.lower() in c['nom_prenoms'].lower():
-                    # On ajoute la province à l'objet résultat pour plus de clarté
                     res_with_prov = c.copy()
-                    res_with_prov['province'] = province
+                    res_with_prov['province'] = prov
                     results.append(res_with_prov)
+    else:
+        return jsonify({"error": f"Province '{province_query}' non reconnue."}), 404
     
     return jsonify({
         "query": bacc_query,
         "province_filter": province_query if province_query else "Toutes",
         "count": len(results),
         "results": results,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "success"
     })
 
 if __name__ == '__main__':
