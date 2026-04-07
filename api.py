@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template_string
 import time
 import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -17,17 +18,9 @@ STATIC_DATA = {
             "admis": "Admis"
         }
     ],
-    "Fianarantsoa": [
-        {
-            "num_inscription": "3049586",
-            "nom_prenoms": "RAKOTOMALALA Bruno",
-            "serie": "C",
-            "centre": "FIANARANTSOA",
-            "ecole": "LYCEE RAHERIVELO RAMAMONJY",
-            "mention": "TRES BIEN",
-            "admis": "Admis"
-        }
-    ]
+    "Mahajanga": [],
+    "Toamasina": [],
+    "Toliara": []
 }
 
 def search_antsiranana_real(query):
@@ -42,7 +35,6 @@ def search_antsiranana_real(query):
         if response.status_code == 200:
             data = response.json()
             if data.get("success") and "data" in data:
-                # Mapper les champs pour correspondre à notre format
                 return [
                     {
                         "num_inscription": item.get("numero_candidat"),
@@ -57,7 +49,39 @@ def search_antsiranana_real(query):
                     for item in data["data"]
                 ]
     except Exception as e:
-        print(f"Erreur lors du scraping Antsiranana: {e}")
+        print(f"Erreur Antsiranana: {e}")
+    return []
+
+def search_fianarantsoa_real(query):
+    """Effectue une recherche réelle sur le site de Fianarantsoa"""
+    url = "https://bacc.univ-fianarantsoa.mg/"
+    try:
+        # Tentative de recherche par POST
+        response = requests.post(url, data={"nom_candidat": query, "btn_nom": "Rechercher"}, timeout=10)
+        print(f"Fianarantsoa POST status: {response.status_code}")
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            # Chercher le tableau de résultats
+            table = soup.find('table')
+            if table:
+                rows = table.find_all('tr')[1:] # Ignorer l'en-tête
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 5:
+                        results.append({
+                            "num_inscription": cols[0].text.strip(),
+                            "nom_prenoms": cols[1].text.strip(),
+                            "serie": cols[2].text.strip(),
+                            "centre": cols[3].text.strip(),
+                            "mention": cols[4].text.strip(),
+                            "admis": "Admis" if "Non Admis" not in cols[4].text else "Non Admis",
+                            "province": "Fianarantsoa"
+                        })
+            print(f"Fianarantsoa results found: {len(results)}")
+            return results
+    except Exception as e:
+        print(f"Erreur Fianarantsoa: {e}")
     return []
 
 HTML_TEMPLATE = """
@@ -86,7 +110,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>🎓 API Résultats BACC Madagascar <span class="live-badge">LIVE</span></h1>
-        <p>Cette API est désormais <strong>dynamique</strong>. Elle interroge en temps réel les serveurs officiels pour la province d'Antsiranana.</p>
+        <p>Cette API interroge en temps réel les serveurs officiels pour plusieurs provinces.</p>
         
         <h2>🚀 Utilisation de l'API</h2>
         <div class="endpoint">
@@ -95,20 +119,23 @@ HTML_TEMPLATE = """
 
         <h2>🔗 Exemples de liens cliquables (Temps Réel)</h2>
         <div class="example">
-            <p><strong>Recherche "Fanantenana" (Données réelles) :</strong><br>
+            <p><strong>Recherche "Fanantenana" à Antsiranana :</strong><br>
             <a href="/recherche?bacc=Fanantenana&province=Antsiranana" target="_blank">/recherche?bacc=Fanantenana&province=Antsiranana</a></p>
         </div>
 
         <div class="example">
-            <p><strong>Recherche "RAKOTO" (Données réelles) :</strong><br>
-            <a href="/recherche?bacc=RAKOTO&province=Antsiranana" target="_blank">/recherche?bacc=RAKOTO&province=Antsiranana</a></p>
+            <p><strong>Recherche "RAKOTO" à Fianarantsoa :</strong><br>
+            <a href="/recherche?bacc=RAKOTO&province=Fianarantsoa" target="_blank">/recherche?bacc=RAKOTO&province=Fianarantsoa</a></p>
         </div>
 
         <h2>📍 Provinces supportées</h2>
         <p>
             <span class="tag">Antsiranana (LIVE)</span>
+            <span class="tag">Fianarantsoa (LIVE)</span>
             <span class="tag">Antananarivo (Démo)</span>
-            <span class="tag">Fianarantsoa (Démo)</span>
+            <span class="tag">Mahajanga (Bientôt)</span>
+            <span class="tag">Toamasina (Bientôt)</span>
+            <span class="tag">Toliara (Bientôt)</span>
         </p>
     </div>
     <div class="footer">
@@ -132,15 +159,18 @@ def recherche():
     
     results = []
     
-    # Logique de recherche
+    # Logique de recherche par province
     if province_query == "Antsiranana":
         results = search_antsiranana_real(bacc_query)
+    elif province_query == "Fianarantsoa":
+        results = search_fianarantsoa_real(bacc_query)
     elif province_query in STATIC_DATA:
         results = [r for r in STATIC_DATA[province_query] if bacc_query.lower() in r['nom_prenoms'].lower()]
         for r in results: r['province'] = province_query
     elif not province_query:
-        # Recherche dans Antsiranana (LIVE) + Autres (STATIC)
+        # Recherche globale
         results.extend(search_antsiranana_real(bacc_query))
+        results.extend(search_fianarantsoa_real(bacc_query))
         for prov, candidates in STATIC_DATA.items():
             for c in candidates:
                 if bacc_query.lower() in c['nom_prenoms'].lower():
